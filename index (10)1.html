@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="so">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Laam Demo — Decentralized Payment Mock</title>
+  <link rel="stylesheet" href="styles.css" />
+<style>
+:root{
+  --bg: #0f1724;
+  --card: #0b1220;
+  --accent: #4fb6ff;
+  --text: #e6eef8;
+  --muted: #9fb4c9;
+}
+*{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Arial;}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#071027 0%, #071b2b 100%);color:var(--text)}
+header{padding:18px 24px;border-bottom:1px solid rgba(255,255,255,0.03)}
+header h1{margin:0;font-size:20px}
+header p.muted{color:var(--muted);margin:6px 0 0}
+.container{max-width:980px;margin:20px auto;padding:0 14px}
+.panel{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:14px;border-radius:10px;margin-bottom:14px;box-shadow:0 6px 18px rgba(2,6,23,0.6)}
+.grid{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.row.small{margin-top:12px}
+input,select{padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:rgba(255,255,255,0.02);color:var(--text)}
+button{padding:8px 12px;border-radius:8px;border:0;background:var(--accent);color:#032233;cursor:pointer}
+button[title]{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.03)}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.validators{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.validator{padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02)}
+.ledger{max-height:220px;overflow:auto;padding:6px;border-radius:6px;background:rgba(0,0,0,0.2);margin-top:8px}
+.proposal{padding:8px;border-radius:8px;margin-top:8px;background:rgba(255,255,255,0.01);border:1px dashed rgba(255,255,255,0.03)}
+.badge{display:inline-block;padding:4px 8px;border-radius:6px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.03);font-size:12px}
+footer{padding:14px;text-align:center;color:var(--muted)}
+
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Laam Demo — Payment System (Mock)</h1>
+    <p class="muted">Supply go'an + Validator endorsement flow (frontend simulation)</p>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>System Overview</h2>
+      <div class="grid">
+        <div>
+          <strong>Total Supply:</strong>
+          <div id="totalSupply">-</div>
+        </div>
+        <div>
+          <strong>System Vault:</strong>
+          <div id="systemVault">-</div>
+        </div>
+        <div>
+          <strong>Committed Ledger Tx:</strong>
+          <div id="committedCount">0</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Create / Switch User</h2>
+      <div class="row">
+        <input id="newUserName" placeholder="Magaca user (tusaale: Ali)" />
+        <button id="createUserBtn">Create & Switch</button>
+      </div>
+      <div class="row">
+        <label>Users:</label>
+        <select id="userSelect"></select>
+        <button id="switchUserBtn">Switch</button>
+      </div>
+      <div class="row small">
+        <button id="faucetBtn">Give 100 units from Vault (for demo)</button>
+        <button id="resetBtn" title="Reset demo (clears localStorage)">Reset Demo</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Wallet / Transfer</h2>
+      <div class="row">
+        <div><strong>Active User:</strong> <span id="activeUser">-</span></div>
+        <div><strong>Balance:</strong> <span id="activeBalance">-</span></div>
+      </div>
+
+      <div class="row">
+        <input id="toUser" placeholder="To user (select or enter name)" />
+        <input id="amount" placeholder="Amount" type="number" />
+        <button id="proposeTxBtn">Propose Transfer</button>
+      </div>
+
+      <div class="muted small">Habka: Transfer waa la soo jeedinayaa (proposal). Markaa validators ayaa endorsement ka bixinaya marka uu gaaro majority waa la commit gareeyaa ledger-ka.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Pending Proposals</h2>
+      <div id="proposalsList">No proposals</div>
+    </section>
+
+    <section class="panel">
+      <h2>Validators (Simulated)</h2>
+      <div id="validators" class="validators"></div>
+      <div class="muted small">Waxaad ku dari kartaa/ka saari kartaa validators si aad u aragto saameynta decentralization-ka.</div>
+      <div class="row small">
+        <input id="newValidatorName" placeholder="Magaca validator" />
+        <button id="addValidatorBtn">Add Validator</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Committed Ledger</h2>
+      <div id="ledgerList" class="ledger"></div>
+    </section>
+
+  </main>
+
+  <footer>
+    <small>Demo: supply fixed oo genesis ah. Xogta waa localStorage (mock network).</small>
+  </footer>
+ <script>
+// Laam Demo frontend logic (mock permissioned ledger)
+// All data persisted to localStorage for demo purposes.
+
+// ----------------- Helpers -----------------
+const storageKey = "laam_demo_state_v1";
+
+function loadState(){
+  const raw = localStorage.getItem(storageKey);
+  if(!raw) return null;
+  try{ return JSON.parse(raw); } catch(e){ return null; }
+}
+function saveState(state){ localStorage.setItem(storageKey, JSON.stringify(state)); }
+function uid(prefix="id"){ return prefix + Math.random().toString(36).slice(2,9); }
+function fmt(n){ return Number(n).toLocaleString(); }
+
+// ----------------- Initial Genesis -----------------
+const DEFAULT = {
+  totalSupply: 100_000_000, // fixed supply
+  systemVault: { id: "vault_system", balance: 100_000_000 },
+  users: {}, // userId => {id,name,balance}
+  validators: [
+    { id: "val_1", name: "Validator A" },
+    { id: "val_2", name: "Validator B" },
+    { id: "val_3", name: "Validator C" }
+  ],
+  proposals: [], // pending proposals waiting endorsements
+  ledger: [] // committed txs
+};
+
+let state = loadState() || DEFAULT;
+saveState(state);
+
+// ----------------- UI bindings -----------------
+const totalSupplyEl = document.getElementById("totalSupply");
+const systemVaultEl = document.getElementById("systemVault");
+const committedCountEl = document.getElementById("committedCount");
+
+const newUserName = document.getElementById("newUserName");
+const createUserBtn = document.getElementById("createUserBtn");
+const userSelect = document.getElementById("userSelect");
+const switchUserBtn = document.getElementById("switchUserBtn");
+const faucetBtn = document.getElementById("faucetBtn");
+const resetBtn = document.getElementById("resetBtn");
+
+const activeUserEl = document.getElementById("activeUser");
+const activeBalanceEl = document.getElementById("activeBalance");
+const toUserEl = document.getElementById("toUser");
+const amountEl = document.getElementById("amount");
+const proposeTxBtn = document.getElementById("proposeTxBtn");
+
+const proposalsList = document.getElementById("proposalsList");
+const validatorsDiv = document.getElementById("validators");
+const addValidatorBtn = document.getElementById("addValidatorBtn");
+const newValidatorName = document.getElementById("newValidatorName");
+
+const ledgerList = document.getElementById("ledgerList");
+
+// track active user id
+let activeUserId = state.activeUserId || null;
+
+// ----------------- Render functions -----------------
+function renderOverview(){
+  totalSupplyEl.textContent = fmt(state.totalSupply);
+  systemVaultEl.textContent = `${fmt(state.systemVault.balance)} (vault)`;
+  committedCountEl.textContent = state.ledger.length;
+}
+
+function renderUsers(){
+  // populate select and show active
+  userSelect.innerHTML = "";
+  const defaultOpt = document.createElement("option"); defaultOpt.value=""; defaultOpt.textContent="-- select user --";
+  userSelect.appendChild(defaultOpt);
+  for(const uid in state.users){
+    const u = state.users[uid];
+    const opt = document.createElement("option");
+    opt.value = uid;
+    opt.textContent = `${u.name} — ${fmt(u.balance)}`;
+    userSelect.appendChild(opt);
+  }
+  activeUserEl.textContent = activeUserId ? (state.users[activeUserId].name) : "-";
+  activeBalanceEl.textContent = activeUserId ? fmt(state.users[activeUserId].balance) : "-";
+}
+
+function renderValidators(){
+  validatorsDiv.innerHTML = "";
+  state.validators.forEach(v=>{
+    const box = document.createElement("div");
+    box.className = "validator";
+    box.dataset.id = v.id;
+    box.innerHTML = `<strong>${v.name}</strong><div class="small muted">id: ${v.id}</div>
+      <div style="margin-top:6px"><button data-action="remove" data-id="${v.id}">Remove</button></div>`;
+    validatorsDiv.appendChild(box);
+  });
+}
+
+function renderProposals(){
+  proposalsList.innerHTML = "";
+  if(state.proposals.length===0){ proposalsList.textContent = "No proposals"; return; }
+  state.proposals.forEach(p=>{
+    const div = document.createElement("div");
+    div.className = "proposal";
+    div.innerHTML = `
+      <div><strong>Proposal:</strong> ${p.id}</div>
+      <div>From: ${p.fromName} → To: ${p.toName} — Amount: ${fmt(p.amount)}</div>
+      <div class="small muted">Status: ${p.status} • Created: ${new Date(p.created).toLocaleString()}</div>
+      <div style="margin-top:8px">
+        Validators endorsements: <span class="badge">${p.endorsements.length}/${state.validators.length}</span>
+      </div>
+    `;
+    // add buttons for each validator to endorse (simulate)
+    const endorseRow = document.createElement("div");
+    endorseRow.style.marginTop = "8px";
+    state.validators.forEach(v=>{
+      const endorsed = p.endorsements.includes(v.id);
+      const btn = document.createElement("button");
+      btn.textContent = endorsed ? `${v.name} ✓` : `Endorse ${v.name}`;
+      btn.disabled = endorsed || p.status!=="pending";
+      btn.style.marginRight = "6px";
+      btn.onclick = ()=>endorseProposal(p.id, v.id);
+      endorseRow.appendChild(btn);
+    });
+    div.appendChild(endorseRow);
+    // add cancel button if proposer
+    if(activeUserId === p.from){
+      const cancelBtn = document.createElement("button");
+      cancelBtn.textContent = "Cancel Proposal";
+      cancelBtn.style.marginTop = "8px";
+      cancelBtn.onclick = ()=>cancelProposal(p.id);
+      div.appendChild(cancelBtn);
+    }
+    proposalsList.appendChild(div);
+  });
+}
+
+function renderLedger(){
+  ledgerList.innerHTML = "";
+  if(state.ledger.length===0){ ledgerList.textContent = "No ledger entries"; return; }
+  state.ledger.slice().reverse().forEach(tx=>{
+    const el = document.createElement("div");
+    el.className = "proposal";
+    el.innerHTML = `<div><strong>Tx:</strong> ${tx.id} — ${new Date(tx.committed).toLocaleString()}</div>
+      <div>${tx.fromName} → ${tx.toName} : ${fmt(tx.amount)}</div>
+      <div class="small muted">Validators: ${tx.validators.join(", ")}</div>`;
+    ledgerList.appendChild(el);
+  });
+}
+
+function rerenderAll(){
+  saveState(state);
+  renderOverview();
+  renderUsers();
+  renderValidators();
+  renderProposals();
+  renderLedger();
+}
+
+// ----------------- Actions -----------------
+createUserBtn.onclick = ()=>{
+  const name = newUserName.value.trim();
+  if(!name) return alert("Geli magaca user-ka");
+  const id = uid("user_");
+  state.users[id] = { id, name, balance: 0 };
+  activeUserId = id;
+  state.activeUserId = id;
+  newUserName.value = "";
+  rerenderAll();
+};
+
+switchUserBtn.onclick = ()=>{
+  const sel = userSelect.value;
+  if(!sel) return alert("Dooro user");
+  activeUserId = sel;
+  state.activeUserId = sel;
+  rerenderAll();
+};
+
+faucetBtn.onclick = ()=>{
+  if(!activeUserId) return alert("Marka hore samee user oo dooro");
+  const amount = 100;
+  if(state.systemVault.balance < amount) return alert("Vault ma hayo lacag ku filan");
+  state.systemVault.balance -= amount;
+  state.users[activeUserId].balance += amount;
+  rerenderAll();
+};
+
+resetBtn.onclick = ()=>{
+  if(!confirm("Ma hubtaa inaad reset gareyso demo? Xogta waa tirtirmaysaa.")) return;
+  localStorage.removeItem(storageKey);
+  state = JSON.parse(JSON.stringify(DEFAULT));
+  activeUserId = null;
+  saveState(state);
+  rerenderAll();
+};
+
+proposeTxBtn.onclick = ()=>{
+  if(!activeUserId) return alert("Geli user ama dooro user");
+  const toName = toUserEl.value.trim();
+  const amount = Number(amountEl.value);
+  if(!toName || !amount || amount <= 0) return alert("Geli recipient iyo amount sax ah");
+  // find recipient by name or create
+  let toId = null;
+  for(const k in state.users) if(state.users[k].name.toLowerCase()===toName.toLowerCase()) toId = k;
+  if(!toId){
+    // create new user automatically (lightweight)
+    toId = uid("user_");
+    state.users[toId] = { id: toId, name: toName, balance: 0 };
+  }
+  // check balance
+  if(state.users[activeUserId].balance < amount) return alert("Balance kuuma filna");
+  // create proposal
+  const p = {
+    id: uid("prop_"),
+    from: activeUserId,
+    fromName: state.users[activeUserId].name,
+    to: toId,
+    toName: state.users[toId].name,
+    amount,
+    endorsements: [], // validator ids
+    status: "pending",
+    created: Date.now()
+  };
+  state.proposals.push(p);
+  // optionally reserve funds
+  state.users[activeUserId].balance -= amount;
+  // we keep amount in a "reserved" sense: For simplicity, it's removed from available until commit/cancel
+  rerenderAll();
+  toUserEl.value = ""; amountEl.value = "";
+};
+
+// validators management
+addValidatorBtn.onclick = ()=>{
+  const name = newValidatorName.value.trim();
+  if(!name) return alert("Geli magaca validator");
+  const id = uid("val_");
+  state.validators.push({ id, name });
+  newValidatorName.value = "";
+  rerenderAll();
+};
+
+// endorse a proposal (simulate validator approving)
+function endorseProposal(propId, validatorId){
+  const p = state.proposals.find(x=>x.id===propId);
+  if(!p) return;
+  if(p.endorsements.includes(validatorId)) return;
+  p.endorsements.push(validatorId);
+  // check majority (strict majority > half)
+  const required = Math.floor(state.validators.length/2) + 1;
+  if(p.endorsements.length >= required){
+    // commit tx to ledger
+    commitProposal(p);
+  } else {
+    saveState(state);
+    rerenderAll();
+  }
+}
+
+function commitProposal(p){
+  // finalize: move funds from reserved to recipient
+  // recipient gets amount
+  state.users[p.to].balance += p.amount;
+  p.status = "committed";
+  p.committed = Date.now();
+  p.validators = p.endorsements.slice();
+  state.ledger.push({
+    id: uid("tx_"),
+    from: p.fromName,
+    to: p.toName,
+    amount: p.amount,
+    committed: p.committed,
+    validators: p.validators
+  });
+  // remove proposal from pending list
+  state.proposals = state.proposals.filter(x=>x.id!==p.id);
+  saveState(state);
+  rerenderAll();
+}
+
+function cancelProposal(propId){
+  const p = state.proposals.find(x=>x.id===propId);
+  if(!p) return;
+  // return reserved funds to proposer
+  state.users[p.from].balance += p.amount;
+  state.proposals = state.proposals.filter(x=>x.id!==propId);
+  saveState(state);
+  rerenderAll();
+}
+
+// remove validator
+validatorsDiv.addEventListener("click", (e)=>{
+  const btn = e.target;
+  if(btn.dataset && btn.dataset.action === "remove"){
+    const id = btn.dataset.id;
+    if(!confirm("Remove validator?")) return;
+    state.validators = state.validators.filter(v=>v.id!==id);
+    // optionally drop endorsements from pending proposals
+    state.proposals.forEach(p=>{
+      p.endorsements = p.endorsements.filter(eid=>eid!==id);
+    });
+    saveState(state);
+    rerenderAll();
+  }
+});
+
+// ----------------- Initial render -----------------
+rerenderAll();
+ </script>
+</body>
+</html>
