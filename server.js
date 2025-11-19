@@ -1,20 +1,41 @@
+// ==============================
+// Alif Payment Version 3 - Server
+// ==============================
+
 const express = require('express');
 const fs = require('fs');
-const app = express();
-const http = require('http').createServer(app);
+const path = require('path');
+const http = require('http');
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ server: http });
+require('dotenv').config(); // Load environment variables
 
-app.use(express.json());
-app.use(express.static('public'));
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-const PORT = process.env.PORT || 3000;
-
-const FIXED_SUPPLY = 1000000;
-let ledger = [];
+// ==============================
+// Config
+// ==============================
+const PORT = process.env.SERVER_PORT || process.env.PORT || 3000;
+const FIXED_SUPPLY = Number(process.env.FIXED_SUPPLY) || 1000000;
+const GENESIS_POOL = process.env.GENESIS_POOL || "GENESIS_POOL";
 const LEDGER_FILE = './ledger.json';
 
-// Load ledger or create genesis
+let ledger = [];
+
+// ==============================
+// Serve frontend
+// ==============================
+app.use(express.static(path.join(__dirname,'public')));
+
+// Catch-all route for SPA
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname,'public','index.html'));
+});
+
+// ==============================
+// Ledger: load or create genesis
+// ==============================
 if(fs.existsSync(LEDGER_FILE)){
     ledger = JSON.parse(fs.readFileSync(LEDGER_FILE));
 }else{
@@ -22,8 +43,8 @@ if(fs.existsSync(LEDGER_FILE)){
         index:0,
         timestamp: Date.now(),
         from:'GENESIS',
-        to:'GENESIS_POOL',
-        amount:FIXED_SUPPLY,
+        to: GENESIS_POOL,
+        amount: FIXED_SUPPLY,
         prevHash:'NONE',
         hash: Buffer.from('GENESIS'+Date.now()).toString('base64').slice(0,32)
     };
@@ -31,7 +52,9 @@ if(fs.existsSync(LEDGER_FILE)){
     fs.writeFileSync(LEDGER_FILE, JSON.stringify(ledger,null,2));
 }
 
-// Helper functions
+// ==============================
+// Helper Functions
+// ==============================
 function saveLedger(){ fs.writeFileSync(LEDGER_FILE, JSON.stringify(ledger,null,2)); }
 function getBalance(walletID){
     let bal=0;
@@ -42,18 +65,20 @@ function getBalance(walletID){
     return bal;
 }
 
+// ==============================
 // API Endpoints
-app.get('/ledger',(req,res)=>res.json(ledger));
+// ==============================
+app.get('/ledger', (req,res)=>res.json(ledger));
 
-app.post('/transaction',(req,res)=>{
+app.post('/transaction', (req,res)=>{
     const { from, to, amount } = req.body;
-    if(!from||!to||!amount) return res.status(400).json({error:'Invalid data'});
+    if(!from || !to || !amount) return res.status(400).json({error:'Invalid data'});
     if(getBalance(from)<amount) return res.status(400).json({error:'Insufficient balance'});
 
-    const prevHash = ledger.length?ledger[ledger.length-1].hash:'GENESIS';
+    const prevHash = ledger.length ? ledger[ledger.length-1].hash : 'GENESIS';
     const block = {
-        index:ledger.length,
-        timestamp:Date.now(),
+        index: ledger.length,
+        timestamp: Date.now(),
         from,
         to,
         amount,
@@ -63,7 +88,7 @@ app.post('/transaction',(req,res)=>{
     ledger.push(block);
     saveLedger();
 
-    // WebSocket notify
+    // Notify WebSocket clients
     wss.clients.forEach(client=>{
         if(client.readyState===WebSocket.OPEN){
             client.send(JSON.stringify({type:'new_block', block}));
@@ -73,9 +98,15 @@ app.post('/transaction',(req,res)=>{
     res.json({success:true, block});
 });
 
+// ==============================
 // WebSocket
+// ==============================
 wss.on('connection', ws=>{
     console.log('New WS connection');
+    ws.send(JSON.stringify({type:'ledger', ledger}));
 });
 
-http.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
+// ==============================
+// Start Server
+// ==============================
+server.listen(PORT, ()=>console.log(`Server running on port ${PORT}`));
