@@ -168,7 +168,21 @@ function sendTokens(){
     updateBalanceUI();
     alert("Sent successfully!");
 }
-
+// Check ledger every 2 seconds for updates
+setInterval(() => {
+    if(currentWallet){
+        const savedLedger = localStorage.getItem("ledger_data");
+        if(savedLedger){
+            const newLedger = JSON.parse(savedLedger);
+            if(JSON.stringify(newLedger) !== JSON.stringify(ledger)){
+                ledger = newLedger;
+                balances[currentWallet.publicKey] = calculateBalance(currentWallet.publicKey);
+                updateBalanceUI();
+                renderChain();
+            }
+        }
+    }
+}, 2000);
 /* RENDER LEDGER */
 function renderChain(){
     const div=document.getElementById("chain");
