@@ -1,0 +1,4 @@
+# Ignore sensitive files
+.env
+ledger.json
+node_modules/
