@@ -2,199 +2,247 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Fixed Supply Digital Money - Demo</title>
+<title>Decentralized Payment v2</title>
 <style>
     body {
-        font-family: "Roboto", sans-serif;
-        background: linear-gradient(135deg, #0a0f2d, #091426);
-        color: #e8ecf3;
         margin: 0;
-        padding: 20px;
-        display: flex;
-        justify-content: center;
+        font-family: Arial, sans-serif;
+        background: #0f172a;
+        color: #fff;
     }
-    .container {
-        width: 420px;
-        background: #111a35;
+
+    .center-box {
+        max-width: 400px;
+        margin: 80px auto;
+        background: #1e293b;
         padding: 25px;
         border-radius: 15px;
-        box-shadow: 0 0 25px #00000070;
-        animation: fadeIn .7s;
-    }
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to   { opacity: 1; transform: translateY(0);   }
-    }
-    h2 {
         text-align: center;
-        margin-bottom: 10px;
-        color: #4fc3f7;
-        font-size: 24px;
+        box-shadow: 0 0 20px rgba(255,255,255,0.1);
+        display: none;
     }
-    input, button {
+
+    h2 { margin-bottom: 20px; }
+
+    .btn {
         width: 100%;
-        padding: 10px;
-        margin: 6px 0;
-        border-radius: 7px;
+        padding: 14px;
+        background: #3b82f6;
         border: none;
-    }
-    input {
-        background: #1a254d;
+        border-radius: 10px;
         color: #fff;
-        border: 1px solid #26356a;
-    }
-    button {
-        background: #4fc3f7;
-        color: #000;
-        font-weight: bold;
+        font-size: 16px;
+        margin: 8px 0;
         cursor: pointer;
-        transition: .2s;
+        font-weight: bold;
+        transition: 0.3s;
     }
-    button:hover {
-        opacity: .8;
-    }
-    .box {
-        background: #0f1733;
+    .btn:hover { background: #1d4ed8; }
+
+    .input {
+        width: 100%;
         padding: 12px;
         border-radius: 10px;
-        margin-top: 10px;
-        border: 1px solid #1d2a52;
+        border: none;
+        margin: 6px 0;
+        background: #334155;
+        color: #fff;
     }
-    .ledger-item {
-        background: #18224a;
-        padding: 10px;
-        border-radius: 8px;
-        margin: 8px 0;
-        border-left: 4px solid #4fc3f7;
+
+    .dashboard {
+        max-width: 480px;
+        margin: 30px auto;
+        background: #1e293b;
+        padding: 20px;
+        border-radius: 15px;
+        display: none;
+    }
+
+    .block {
+        background: #0f172a;
+        padding: 12px;
+        margin-top: 10px;
+        border-radius: 10px;
         font-size: 13px;
+        border-left: 4px solid #3b82f6;
+    }
+
+    .balance-box {
+        background: #3b82f6;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        font-size: 18px;
+        margin: 15px 0;
+        font-weight: bold;
     }
 </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Digital Money (Fixed Supply)</h2>
+<!-- PAGE 1: CREATE / IMPORT -->
+<div id="welcome" class="center-box">
+    <h2>Decentralized Payment v2</h2>
 
-    <h3>Check Balance</h3>
-    <input id="wallet" placeholder="Wallet ID">
-    <button onclick="checkBalance()">Check</button>
-    <div id="balanceBox" class="box"></div>
+    <button class="btn" onclick="createWallet()">Create New Wallet</button>
 
-    <h3>Send Money</h3>
-    <input id="from" placeholder="From Wallet">
-    <input id="to" placeholder="To Wallet">
-    <input id="amount" type="number" placeholder="Amount">
-    <button onclick="sendMoney()">Send</button>
+    <input id="importKey" class="input" placeholder="Enter Private Key">
+    <button class="btn" onclick="importWallet()">Import Wallet</button>
+</div>
 
-    <h3>Ledger (Hashed Blocks)</h3>
-    <div id="ledger" class="box"></div>
+<!-- PAGE 2: DASHBOARD -->
+<div id="dashboard" class="dashboard">
+
+    <h2>Your Wallet</h2>
+
+    <div id="walletInfo"></div>
+
+    <div id="balance" class="balance-box">Balance: 0 DPT</div>
+
+    <h3>Send Payment</h3>
+    <input id="receiver" class="input" placeholder="Receiver Wallet ID">
+    <input id="amount" class="input" type="number" placeholder="Amount">
+    <button class="btn" onclick="sendTokens()">Send</button>
+
+    <h3>Ledger Blocks</h3>
+    <div id="chain"></div>
 </div>
 
 <script>
-// ---------- SUPPLY GO'AN ----------
-const TOTAL_SUPPLY = 1000000;
+/* =====================================
+   FIXED SUPPLY BLOCKCHAIN (Version 2)
+   ===================================== */
+let FIXED_SUPPLY = 1000000;
+let ledger = [];
+let balances = {};
 
-// Initialize supply only once
-if (!localStorage.getItem("GENESIS_DONE")) {
-    localStorage.setItem("GENESIS_DONE", "YES");
-    localStorage.setItem("TOTAL_SUPPLY", TOTAL_SUPPLY);
+function hash(data) {
+    return btoa(JSON.stringify(data)).slice(0, 32);
+}
 
-    // genesis balance
-    localStorage.setItem("balances", JSON.stringify({ "SYSTEM": TOTAL_SUPPLY }));
-
-    // genesis block
-    const genesisBlock = {
-        index: 0,
-        from: "GENESIS",
-        to: "SYSTEM",
-        amount: TOTAL_SUPPLY,
-        prevHash: "0",
-        time: new Date().toLocaleString()
+function addBlock(from, to, amount) {
+    const block = {
+        index: ledger.length,
+        timestamp: Date.now(),
+        from,
+        to,
+        amount,
+        prevHash: ledger.length ? ledger[ledger.length - 1].hash : "GENESIS",
     };
-    genesisBlock.hash = sha256(JSON.stringify(genesisBlock));
-
-    localStorage.setItem("ledger", JSON.stringify([genesisBlock]));
+    block.hash = hash(block);
+    ledger.push(block);
+    renderChain();
 }
 
-// ---------- LOAD DATA ----------
-let balances = JSON.parse(localStorage.getItem("balances"));
-let ledger = JSON.parse(localStorage.getItem("ledger"));
+/* =====================================
+   WALLET SYSTEM
+   ===================================== */
+let currentWallet = null;
+function createWallet() {
+    const privateKey = "PRIV-" + Math.random().toString(36).substring(2, 16);
+    const publicKey  = "WALLET-" + Math.random().toString(36).substring(2, 10);
 
-// ---------- SHA-256 FUNCTION ----------
-async function sha256(msg) {
-    const msgBuffer = new TextEncoder().encode(msg);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    currentWallet = { privateKey, publicKey };
+
+    // Haddii uu cusub yahay → Si 100 DPT
+    if (!balances[publicKey]) {
+        balances[publicKey] = 100;
+        addBlock("GENESIS_POOL", publicKey, 100); // record in ledger
+    }
+
+    switchToDashboard();
 }
 
-// ---------- SEND MONEY ----------
-async function sendMoney() {
-    const from = document.getElementById("from").value.trim();
-    const to = document.getElementById("to").value.trim();
+function importWallet() {
+    const key = document.getElementById("importKey").value.trim();
+    if (!key.startsWith("PRIV-")) return alert("Invalid private key");
+
+    currentWallet = {
+        privateKey: key,
+        publicKey: "WALLET-" + key.slice(5, 12)
+    };
+
+    // Haddii uu wallet-ka cusub yahay → Si 100 DPT
+    if (!balances[currentWallet.publicKey]) {
+        balances[currentWallet.publicKey] = 100;
+        addBlock("GENESIS_POOL", currentWallet.publicKey, 100);
+    }
+
+    switchToDashboard();
+}
+/* Show Dashboard */
+function switchToDashboard() {
+    document.getElementById("welcome").style.display = "none";
+    document.getElementById("dashboard").style.display = "block";
+    showWallet();
+}
+
+/* Show Wallet Info */
+function showWallet() {
+    document.getElementById("walletInfo").innerHTML = `
+        <div class="block">
+            <b>Wallet ID:</b> ${currentWallet.publicKey}<br>
+            <b>Private Key:</b> ${currentWallet.privateKey}
+        </div>
+    `;
+    updateBalanceUI();
+}
+
+/* =====================================
+   SENDING TOKENS
+   ===================================== */
+function sendTokens() {
+    if (!currentWallet) return alert("Create or import wallet");
+
+    const to = document.getElementById("receiver").value.trim();
     const amount = Number(document.getElementById("amount").value);
 
-    if (!from || !to || !amount) return alert("Fill all fields");
+    if (!to.startsWith("WALLET-")) return alert("Invalid receiver");
+    if (amount <= 0) return alert("Invalid amount");
 
-    if (!balances[from]) balances[from] = 0;
-    if (!balances[to]) balances[to] = 0;
+    if (balances[currentWallet.publicKey] < amount)
+        return alert("Insufficient balance");
 
-    if (balances[from] < amount)
-        return alert("Insufficient balance!");
+    balances[currentWallet.publicKey] -= amount;
+    balances[to] = (balances[to] || 0) + amount;
 
-    balances[from] -= amount;
-    balances[to] += amount;
-
-    // create block
-    const prev = ledger[ledger.length - 1];
-    const newBlock = {
-        index: ledger.length,
-        from, to, amount,
-        prevHash: prev.hash,
-        time: new Date().toLocaleString()
-    };
-    newBlock.hash = await sha256(JSON.stringify(newBlock));
-
-    ledger.push(newBlock);
-
-    // save
-    localStorage.setItem("balances", JSON.stringify(balances));
-    localStorage.setItem("ledger", JSON.stringify(ledger));
-
-    alert("Transaction successful!");
-    renderLedger();
+    addBlock(currentWallet.publicKey, to, amount);
+    updateBalanceUI();
 }
 
-// ---------- CHECK BALANCE ----------
-function checkBalance() {
-    const wallet = document.getElementById("wallet").value.trim();
-    if (!wallet) return alert("Enter wallet ID");
-
-    const bal = balances[wallet] || 0;
-    document.getElementById("balanceBox").innerHTML =
-        `<strong>Balance:</strong> ${bal}`;
+/* Update UI Balance */
+function updateBalanceUI() {
+    document.getElementById("balance").innerHTML =
+        "Balance: " + balances[currentWallet.publicKey] + " DPT";
 }
 
-// ---------- RENDER LEDGER ----------
-function renderLedger() {
-    const box = document.getElementById("ledger");
-    box.innerHTML = "";
+/* =====================================
+   RENDER BLOCKCHAIN
+   ===================================== */
+function renderChain() {
+    const div = document.getElementById("chain");
+    div.innerHTML = "";
 
-    ledger.slice().reverse().forEach(block => {
-        box.innerHTML += `
-            <div class="ledger-item">
-                <strong>Block #${block.index}</strong><br>
-                From: ${block.from} → To: ${block.to}<br>
-                Amount: ${block.amount}<br>
-                <small>Time: ${block.time}</small><br>
-                <small>PrevHash: ${block.prevHash.slice(0,20)}...</small><br>
-                <small>Hash: ${block.hash.slice(0,20)}...</small>
+    ledger.forEach(b => {
+        div.innerHTML += `
+            <div class="block">
+                <b>Block #${b.index}</b><br>
+                From: ${b.from}<br>
+                To: ${b.to}<br>
+                Amount: ${b.amount}<br>
+                PrevHash: ${b.prevHash}<br>
+                Hash: ${b.hash}
             </div>
         `;
     });
 }
 
-renderLedger();
+/* Genesis supply */
+balances["GENESIS"] = FIXED_SUPPLY;
+addBlock("GENESIS", "GENESIS_POOL", FIXED_SUPPLY);
+
+/* Show welcome page by default */
+document.getElementById("welcome").style.display = "block";
 </script>
 
 </body>
