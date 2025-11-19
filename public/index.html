@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Laam Payment v3 Mobile</title>
+<title>Alif Payment v3</title>
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;}
 .center-box{max-width:400px;margin:50px auto;padding:20px;border-radius:15px;background:#1e293b;text-align:center;}
@@ -18,7 +18,7 @@ body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;}
 <body>
 
 <div id="welcome" class="center-box">
-<h2>Laam Payment v3</h2>
+<h2>Alif Payment v3</h2>
 <button class="btn" onclick="createWallet()">Create New Wallet</button>
 <input id="importKey" class="input" placeholder="Enter Private Key">
 <button class="btn" onclick="importWallet()">Import Wallet</button>
@@ -43,7 +43,7 @@ body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;}
 </div>
 
 <script>
-const SERVER_URL='https://alif-b788.onrender.com/'; // replace after deploy
+const SERVER_URL='https://alif-b788.onrender.com';
 let ledger=[], currentWallet=null, ws=null;
 
 async function fetchLedger(){
@@ -63,36 +63,98 @@ function connectWebSocket(){
     };
 }
 
+async function sendTransaction(from,to,amount){
+    await fetch(`${SERVER_URL}/transaction`,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({from,to,amount})
+    });
+}
+
 // Wallet functions
-function createWallet(){ let pk='PRIV-'+Math.random().toString(36).substring(2,16);
-let pub='WALLET-'+Math.random().toString(36).substring(2,10);
-let pin=prompt('Create PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
-currentWallet={privateKey:pk,publicKey:pub,pin}; localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
-mintToWallet(pub);}
-function importWallet(){ let key=document.getElementById('importKey').value.trim();
-if(!key.startsWith('PRIV-'))return alert('Invalid key'); let pin=prompt('Set PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
-let pub='WALLET-'+key.slice(5,12); currentWallet={privateKey:key,publicKey:pub,pin}; localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
-mintToWallet(pub);}
-async function mintToWallet(pub){ await sendTransaction('GENESIS_POOL',pub,100); switchToDashboard();}
-function unlockWallet(){ let data=JSON.parse(localStorage.getItem('wallet_data'));
-let entered=document.getElementById('pinInput').value; if(entered!==data.pin)return alert('Wrong PIN');
-currentWallet=data; switchToDashboard();}
-function resetWallet(){ if(!confirm('Reset wallet?'))return;
-localStorage.removeItem('wallet_data'); currentWallet=null; ledger=[]; document.getElementById('dashboard').style.display='none'; document.getElementById('welcome').style.display='block';}
+async function createWallet(){
+    let pk='PRIV-'+Math.random().toString(36).substring(2,16);
+    let pub='WALLET-'+Math.random().toString(36).substring(2,10);
+    let pin=prompt('Create PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
+    currentWallet={privateKey:pk,publicKey:pub,pin};
+    localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
+    await sendTransaction('GENESIS_POOL', pub, 100);
+    await fetchLedger();
+    switchToDashboard();
+}
+
+async function importWallet(){
+    let key=document.getElementById('importKey').value.trim();
+    if(!key.startsWith('PRIV-')) return alert('Invalid key');
+    let pin=prompt('Set PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
+    let pub='WALLET-'+key.slice(5,12);
+    currentWallet={privateKey:key,publicKey:pub,pin};
+    localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
+    await sendTransaction('GENESIS_POOL', pub, 100);
+    await fetchLedger();
+    switchToDashboard();
+}
+
+function unlockWallet(){
+    let data=JSON.parse(localStorage.getItem('wallet_data'));
+    let entered=document.getElementById('pinInput').value;
+    if(entered!==data.pin) return alert('Wrong PIN');
+    currentWallet=data;
+    switchToDashboard();
+}
+
+function resetWallet(){
+    if(!confirm('Reset wallet?')) return;
+    localStorage.removeItem('wallet_data'); currentWallet=null; ledger=[];
+    document.getElementById('dashboard').style.display='none';
+    document.getElementById('welcome').style.display='block';
+}
 
 // Dashboard
-function switchToDashboard(){ document.getElementById('welcome').style.display='none';
-document.getElementById('pinScreen').style.display='none'; document.getElementById('dashboard').style.display='block';
-connectWebSocket(); fetchLedger(); showWallet();}
-function showWallet(){ updateBalance(); document.getElementById('walletInfo').innerHTML=`<div class="block"><b>Wallet ID:</b> ${currentWallet.publicKey}<br><b>Private Key:</b> ${currentWallet.privateKey}</div>`;}
-function updateBalance(){ if(!currentWallet) return; let bal=0; ledger.forEach(b=>{ if(b.to===currentWallet.publicKey) bal+=b.amount; if(b.from===currentWallet.publicKey) bal-=b.amount; }); document.getElementById('balance').innerText='Balance: '+bal+' DPT';}
-function renderChain(){ const div=document.getElementById('chain'); div.innerHTML=''; ledger.forEach(b=>{ div.innerHTML+=`<div class="block"><b>Block #${b.index}</b><br>From: ${b.from}<br>To: ${b.to}<br>Amount: ${b.amount}<br>PrevHash: ${b.prevHash}<br>Hash: ${b.hash}</div>`; });}
+function switchToDashboard(){
+    document.getElementById('welcome').style.display='none';
+    document.getElementById('pinScreen').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+    connectWebSocket();
+    fetchLedger();
+    showWallet();
+}
 
-// Send transaction
-async function sendTransaction(from,to,amount){ await fetch(`${SERVER_URL}/transaction`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from,to,amount})}); }
-async function sendTokens(){ if(!currentWallet)return alert('Create wallet'); let to=document.getElementById('receiver').value.trim();
-let amount=Number(document.getElementById('amount').value); if(!to.startsWith('WALLET-'))return alert('Invalid receiver'); if(amount<=0)return alert('Invalid amount');
-await sendTransaction(currentWallet.publicKey,to,amount); alert('Sent successfully!'); fetchLedger();}
+function showWallet(){
+    updateBalance();
+    document.getElementById('walletInfo').innerHTML=
+        `<div class="block"><b>Wallet ID:</b> ${currentWallet.publicKey}<br><b>Private Key:</b> ${currentWallet.privateKey}</div>`;
+}
+
+function updateBalance(){
+    if(!currentWallet) return;
+    let bal=0;
+    ledger.forEach(b=>{
+        if(b.to===currentWallet.publicKey) bal+=b.amount;
+        if(b.from===currentWallet.publicKey) bal-=b.amount;
+    });
+    document.getElementById('balance').innerText='Balance: '+bal+' DPT';
+}
+
+function renderChain(){
+    const div=document.getElementById('chain');
+    div.innerHTML='';
+    ledger.forEach(b=>{
+        div.innerHTML+=`<div class="block"><b>Block #${b.index}</b><br>From: ${b.from}<br>To: ${b.to}<br>Amount: ${b.amount}<br>PrevHash: ${b.prevHash}<br>Hash: ${b.hash}</div>`;
+    });
+}
+
+// Send tokens
+async function sendTokens(){
+    if(!currentWallet) return alert('Create wallet');
+    let to=document.getElementById('receiver').value.trim();
+    let amount=Number(document.getElementById('amount').value);
+    if(!to.startsWith('WALLET-')) return alert('Invalid receiver');
+    if(amount<=0) return alert('Invalid amount');
+    await sendTransaction(currentWallet.publicKey, to, amount);
+    alert('Sent successfully!');
+    await fetchLedger();
+}
 </script>
 
 </body>
