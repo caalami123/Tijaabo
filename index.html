@@ -2,183 +2,98 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Decentralized Payment v3</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Laam Payment v3 Mobile</title>
 <style>
-body { margin:0; font-family:Arial,sans-serif; background:#0f172a; color:#fff; }
-.center-box { max-width:400px; margin:80px auto; background:#1e293b; padding:25px; border-radius:15px; text-align:center; box-shadow:0 0 20px rgba(255,255,255,0.1); display:none; }
-h2 { margin-bottom:20px; }
-.btn { width:100%; padding:14px; background:#3b82f6; border:none; border-radius:10px; color:#fff; font-size:16px; margin:8px 0; cursor:pointer; font-weight:bold; transition:.3s; }
-.btn:hover { background:#1d4ed8; }
-.input { width:100%; padding:12px; border-radius:10px; border:none; margin:6px 0; background:#334155; color:#fff; }
-.dashboard { max-width:480px; margin:30px auto; background:#1e293b; padding:20px; border-radius:15px; display:none; }
-.block { background:#0f172a; padding:12px; margin-top:10px; border-radius:10px; font-size:13px; border-left:4px solid #3b82f6; }
-.balance-box { background:#3b82f6; padding:15px; border-radius:10px; text-align:center; font-size:18px; margin:15px 0; font-weight:bold; }
-#notify { position: fixed; top: 20px; right: 20px; background: #16a34a; color:#fff; padding: 12px 20px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.3); font-weight: bold; z-index: 1000; display: none; }
+body{margin:0;font-family:Arial,sans-serif;background:#0f172a;color:#fff;}
+.center-box{max-width:400px;margin:50px auto;padding:20px;border-radius:15px;background:#1e293b;text-align:center;}
+.btn{width:100%;padding:12px;margin:6px 0;border:none;border-radius:10px;background:#3b82f6;color:#fff;font-weight:bold;font-size:16px;}
+.btn:hover{background:#1d4ed8;}
+.input{width:100%;padding:10px;margin:6px 0;border-radius:10px;border:none;background:#334155;color:#fff;}
+.dashboard{max-width:480px;margin:20px auto;padding:20px;border-radius:15px;background:#1e293b;display:none;}
+.balance-box{background:#3b82f6;padding:12px;border-radius:10px;margin:12px 0;font-weight:bold;text-align:center;}
+.block{background:#0f172a;padding:10px;margin:8px 0;border-radius:10px;border-left:4px solid #3b82f6;font-size:12px;}
 </style>
 </head>
 <body>
 
-<div id="notify"></div>
-
 <div id="welcome" class="center-box">
-    <h2>Decentralized Payment v3</h2>
-    <button class="btn" onclick="createWallet()">Create New Wallet</button>
-    <input id="importKey" class="input" placeholder="Enter Private Key">
-    <button class="btn" onclick="importWallet()">Import Wallet</button>
+<h2>Laam Payment v3</h2>
+<button class="btn" onclick="createWallet()">Create New Wallet</button>
+<input id="importKey" class="input" placeholder="Enter Private Key">
+<button class="btn" onclick="importWallet()">Import Wallet</button>
 </div>
 
-<div id="pinScreen" class="center-box">
-    <h2>Enter PIN</h2>
-    <input id="pinInput" class="input" type="password" maxlength="6" placeholder="PIN">
-    <button class="btn" onclick="unlockWallet()">Unlock</button>
+<div id="pinScreen" class="center-box" style="display:none;">
+<h2>Enter PIN</h2>
+<input id="pinInput" class="input" type="password" maxlength="6" placeholder="PIN">
+<button class="btn" onclick="unlockWallet()">Unlock</button>
 </div>
 
 <div id="dashboard" class="dashboard">
-    <button class="btn" style="background:#ef4444;margin-bottom:15px;" onclick="resetWallet()">Reset Wallet</button>
-    <h2>Your Wallet</h2>
-    <div id="walletInfo"></div>
-    <div id="balance" class="balance-box">Balance: 0 DPT</div>
-
-    <h3>Send Payment</h3>
-    <input id="receiver" class="input" placeholder="Receiver Wallet ID">
-    <input id="amount" class="input" type="number" placeholder="Amount">
-    <button class="btn" onclick="sendTokens()">Send</button>
-
-    <h3>Ledger Blocks</h3>
-    <div id="chain"></div>
+<button class="btn" style="background:#ef4444;margin-bottom:12px;" onclick="resetWallet()">Reset Wallet</button>
+<div id="walletInfo"></div>
+<div id="balance" class="balance-box">Balance: 0 DPT</div>
+<h3>Send Payment</h3>
+<input id="receiver" class="input" placeholder="Receiver Wallet ID">
+<input id="amount" class="input" type="number" placeholder="Amount">
+<button class="btn" onclick="sendTokens()">Send</button>
+<h3>Ledger Blocks</h3>
+<div id="chain" style="max-height:300px;overflow-y:auto;"></div>
 </div>
 
 <script>
-let currentWallet=null;
-let ledger=[];
+const SERVER_URL='https://YOUR_RAILWAY_URL_HERE'; // replace after deploy
+let ledger=[], currentWallet=null, ws=null;
 
-// Notification
-function showNotification(msg){
-    const notif=document.getElementById("notify");
-    notif.innerText=msg;
-    notif.style.display="block";
-    setTimeout(()=>{ notif.style.display="none"; },3000);
-}
-
-// Wallet create/import
-function createWallet(){
-    const privateKey="PRIV-"+Math.random().toString(36).substring(2,16);
-    const publicKey="WALLET-"+Math.random().toString(36).substring(2,10);
-    let pin=prompt("Create PIN (4–6 digits):");
-    if(!pin||pin.length<4)return alert("Invalid PIN");
-    currentWallet={privateKey,publicKey,pin};
-    localStorage.setItem("wallet_data",JSON.stringify(currentWallet));
-    // Send 100 DPT to new wallet from GENESIS_POOL
-    sendTransaction("GENESIS_POOL", publicKey, 100);
-    switchToDashboard();
-}
-
-function importWallet(){
-    const key=document.getElementById("importKey").value.trim();
-    if(!key.startsWith("PRIV-"))return alert("Invalid private key");
-    let pin=prompt("Set PIN for this wallet:");
-    if(!pin||pin.length<4)return alert("Invalid PIN");
-    const publicKey="WALLET-"+key.slice(5,12);
-    currentWallet={privateKey:key,publicKey,pin};
-    localStorage.setItem("wallet_data",JSON.stringify(currentWallet));
-    switchToDashboard();
-}
-
-function showPinScreen(){ document.getElementById("welcome").style.display="none"; document.getElementById("pinScreen").style.display="block"; }
-
-function unlockWallet(){
-    const data=JSON.parse(localStorage.getItem("wallet_data"));
-    const enteredPin=document.getElementById("pinInput").value;
-    if(enteredPin!==data.pin) return alert("Wrong PIN");
-    currentWallet=data;
-    switchToDashboard();
-}
-
-function switchToDashboard(){ document.getElementById("welcome").style.display="none"; document.getElementById("dashboard").style.display="block"; showWallet(); fetchLedger(); connectWebSocket(); }
-
-function showWallet(){
-    document.getElementById("walletInfo").innerHTML=`<div class="block"><b>Wallet ID:</b> ${currentWallet.publicKey}<br><b>Private Key:</b> ${currentWallet.privateKey}</div>`;
-}
-
-// Reset Wallet
-function resetWallet(){
-    if(!confirm("Are you sure you want to reset your wallet? All data will be lost!")) return;
-    localStorage.removeItem("wallet_data");
-    currentWallet=null;
-    ledger=[];
-    document.getElementById("dashboard").style.display="none";
-    document.getElementById("welcome").style.display="block";
-}
-
-// Fetch ledger from server
 async function fetchLedger(){
-    const res=await fetch('/ledger');
+    const res=await fetch(`${SERVER_URL}/ledger`);
     ledger=await res.json();
     updateBalance();
     renderChain();
 }
-
-function updateBalance(){
-    let bal=0;
-    ledger.forEach(b=>{
-        if(b.to===currentWallet.publicKey) bal+=b.amount;
-        if(b.from===currentWallet.publicKey) bal-=b.amount;
-    });
-    document.getElementById("balance").innerText=`Balance: ${bal} DPT`;
-}
-
-// Send transaction to server
-async function sendTransaction(from,to,amount){
-    try{
-        const res=await fetch('/transaction',{
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({from,to,amount})
-        });
-        const data=await res.json();
-        if(data.error) return alert(data.error);
-        ledger.push(data.block);
-        updateBalance();
-        renderChain();
-        alert("Sent successfully!");
-    }catch(e){ alert("Error sending tokens"); }
-}
-
-// Send button
-function sendTokens(){
-    const to=document.getElementById("receiver").value.trim();
-    const amount=Number(document.getElementById("amount").value);
-    if(!to.startsWith("WALLET-"))return alert("Invalid receiver");
-    if(amount<=0)return alert("Invalid amount");
-    sendTransaction(currentWallet.publicKey,to,amount);
-}
-
-// Render ledger
-function renderChain(){
-    const div=document.getElementById("chain");
-    div.innerHTML="";
-    ledger.forEach(b=>{
-        div.innerHTML+=`<div class="block"><b>Block #${b.index}</b><br>From: ${b.from}<br>To: ${b.to}<br>Amount: ${b.amount}<br>PrevHash: ${b.prevHash}<br>Hash: ${b.hash}</div>`;
-    });
-}
-
-// WebSocket for realtime updates
-let ws;
 function connectWebSocket(){
     if(ws) ws.close();
-    ws=new WebSocket(`ws://${window.location.host}`);
-    ws.onmessage=function(event){
-        const msg=JSON.parse(event.data);
-        if(msg.type==='new_block'){
-            ledger.push(msg.block);
-            if(msg.block.to===currentWallet.publicKey){
-                showNotification(`Received ${msg.block.amount} DPT from ${msg.block.from}`);
-            }
-            updateBalance();
-            renderChain();
-        }
-    }
+    ws=new WebSocket(SERVER_URL.replace(/^http/,'ws'));
+    ws.onmessage=e=>{
+        const data=JSON.parse(e.data);
+        if(data.type==='new_block') ledger.push(data.block);
+        updateBalance();
+        renderChain();
+    };
 }
+
+// Wallet functions
+function createWallet(){ let pk='PRIV-'+Math.random().toString(36).substring(2,16);
+let pub='WALLET-'+Math.random().toString(36).substring(2,10);
+let pin=prompt('Create PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
+currentWallet={privateKey:pk,publicKey:pub,pin}; localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
+mintToWallet(pub);}
+function importWallet(){ let key=document.getElementById('importKey').value.trim();
+if(!key.startsWith('PRIV-'))return alert('Invalid key'); let pin=prompt('Set PIN:'); if(!pin||pin.length<4)return alert('Invalid PIN');
+let pub='WALLET-'+key.slice(5,12); currentWallet={privateKey:key,publicKey:pub,pin}; localStorage.setItem('wallet_data',JSON.stringify(currentWallet));
+mintToWallet(pub);}
+async function mintToWallet(pub){ await sendTransaction('GENESIS_POOL',pub,100); switchToDashboard();}
+function unlockWallet(){ let data=JSON.parse(localStorage.getItem('wallet_data'));
+let entered=document.getElementById('pinInput').value; if(entered!==data.pin)return alert('Wrong PIN');
+currentWallet=data; switchToDashboard();}
+function resetWallet(){ if(!confirm('Reset wallet?'))return;
+localStorage.removeItem('wallet_data'); currentWallet=null; ledger=[]; document.getElementById('dashboard').style.display='none'; document.getElementById('welcome').style.display='block';}
+
+// Dashboard
+function switchToDashboard(){ document.getElementById('welcome').style.display='none';
+document.getElementById('pinScreen').style.display='none'; document.getElementById('dashboard').style.display='block';
+connectWebSocket(); fetchLedger(); showWallet();}
+function showWallet(){ updateBalance(); document.getElementById('walletInfo').innerHTML=`<div class="block"><b>Wallet ID:</b> ${currentWallet.publicKey}<br><b>Private Key:</b> ${currentWallet.privateKey}</div>`;}
+function updateBalance(){ if(!currentWallet) return; let bal=0; ledger.forEach(b=>{ if(b.to===currentWallet.publicKey) bal+=b.amount; if(b.from===currentWallet.publicKey) bal-=b.amount; }); document.getElementById('balance').innerText='Balance: '+bal+' DPT';}
+function renderChain(){ const div=document.getElementById('chain'); div.innerHTML=''; ledger.forEach(b=>{ div.innerHTML+=`<div class="block"><b>Block #${b.index}</b><br>From: ${b.from}<br>To: ${b.to}<br>Amount: ${b.amount}<br>PrevHash: ${b.prevHash}<br>Hash: ${b.hash}</div>`; });}
+
+// Send transaction
+async function sendTransaction(from,to,amount){ await fetch(`${SERVER_URL}/transaction`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from,to,amount})}); }
+async function sendTokens(){ if(!currentWallet)return alert('Create wallet'); let to=document.getElementById('receiver').value.trim();
+let amount=Number(document.getElementById('amount').value); if(!to.startsWith('WALLET-'))return alert('Invalid receiver'); if(amount<=0)return alert('Invalid amount');
+await sendTransaction(currentWallet.publicKey,to,amount); alert('Sent successfully!'); fetchLedger();}
 </script>
+
 </body>
 </html>
