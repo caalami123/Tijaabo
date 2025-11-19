@@ -2,101 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Decentralized Payment v2</title>
+<title>Decentralized Payment v2.5</title>
 <style>
-    body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background: #0f172a;
-        color: #fff;
-    }
-
-    .center-box {
-        max-width: 400px;
-        margin: 80px auto;
-        background: #1e293b;
-        padding: 25px;
-        border-radius: 15px;
-        text-align: center;
-        box-shadow: 0 0 20px rgba(255,255,255,0.1);
-        display: none;
-    }
-
-    h2 { margin-bottom: 20px; }
-
-    .btn {
-        width: 100%;
-        padding: 14px;
-        background: #3b82f6;
-        border: none;
-        border-radius: 10px;
-        color: #fff;
-        font-size: 16px;
-        margin: 8px 0;
-        cursor: pointer;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-    .btn:hover { background: #1d4ed8; }
-
-    .input {
-        width: 100%;
-        padding: 12px;
-        border-radius: 10px;
-        border: none;
-        margin: 6px 0;
-        background: #334155;
-        color: #fff;
-    }
-
-    .dashboard {
-        max-width: 480px;
-        margin: 30px auto;
-        background: #1e293b;
-        padding: 20px;
-        border-radius: 15px;
-        display: none;
-    }
-
-    .block {
-        background: #0f172a;
-        padding: 12px;
-        margin-top: 10px;
-        border-radius: 10px;
-        font-size: 13px;
-        border-left: 4px solid #3b82f6;
-    }
-
-    .balance-box {
-        background: #3b82f6;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-        font-size: 18px;
-        margin: 15px 0;
-        font-weight: bold;
-    }
+body { margin:0; font-family:Arial,sans-serif; background:#0f172a; color:#fff; }
+.center-box { max-width:400px; margin:80px auto; background:#1e293b; padding:25px; border-radius:15px; text-align:center; box-shadow:0 0 20px rgba(255,255,255,0.1); display:none; }
+h2 { margin-bottom:20px; }
+.btn { width:100%; padding:14px; background:#3b82f6; border:none; border-radius:10px; color:#fff; font-size:16px; margin:8px 0; cursor:pointer; font-weight:bold; transition:.3s; }
+.btn:hover { background:#1d4ed8; }
+.input { width:100%; padding:12px; border-radius:10px; border:none; margin:6px 0; background:#334155; color:#fff; }
+.dashboard { max-width:480px; margin:30px auto; background:#1e293b; padding:20px; border-radius:15px; display:none; }
+.block { background:#0f172a; padding:12px; margin-top:10px; border-radius:10px; font-size:13px; border-left:4px solid #3b82f6; }
+.balance-box { background:#3b82f6; padding:15px; border-radius:10px; text-align:center; font-size:18px; margin:15px 0; font-weight:bold; }
 </style>
 </head>
 <body>
 
 <!-- PAGE 1: CREATE / IMPORT -->
 <div id="welcome" class="center-box">
-    <h2>Decentralized Payment v2</h2>
-
+    <h2>Decentralized Payment v2.5</h2>
     <button class="btn" onclick="createWallet()">Create New Wallet</button>
-
     <input id="importKey" class="input" placeholder="Enter Private Key">
     <button class="btn" onclick="importWallet()">Import Wallet</button>
 </div>
 
+<div id="pinScreen" class="center-box">
+    <h2>Enter PIN</h2>
+    <input id="pinInput" class="input" type="password" maxlength="6" placeholder="PIN">
+    <button class="btn" onclick="unlockWallet()">Unlock</button>
+</div>
+
 <!-- PAGE 2: DASHBOARD -->
 <div id="dashboard" class="dashboard">
-
+    <button class="btn" style="background:#ef4444;margin-bottom:15px;" onclick="resetWallet()">Reset Wallet</button>
     <h2>Your Wallet</h2>
-
     <div id="walletInfo"></div>
-
     <div id="balance" class="balance-box">Balance: 0 DPT</div>
 
     <h3>Send Payment</h3>
@@ -110,139 +49,134 @@
 
 <script>
 /* =====================================
-   FIXED SUPPLY BLOCKCHAIN (Version 2)
+   FIXED SUPPLY BLOCKCHAIN (v2.5)
    ===================================== */
 let FIXED_SUPPLY = 1000000;
 let ledger = [];
 let balances = {};
+let currentWallet = null;
 
-function hash(data) {
-    return btoa(JSON.stringify(data)).slice(0, 32);
-}
+function hash(data){ return btoa(JSON.stringify(data)).slice(0,32); }
 
-function addBlock(from, to, amount) {
-    const block = {
-        index: ledger.length,
-        timestamp: Date.now(),
-        from,
-        to,
-        amount,
-        prevHash: ledger.length ? ledger[ledger.length - 1].hash : "GENESIS",
-    };
+function addBlock(from,to,amount){
+    const block = { index:ledger.length, timestamp:Date.now(), from, to, amount, prevHash:ledger.length?ledger[ledger.length-1].hash:"GENESIS" };
     block.hash = hash(block);
     ledger.push(block);
+    localStorage.setItem("ledger_data", JSON.stringify(ledger));
     renderChain();
+}
+
+function calculateBalance(walletID){
+    let bal=0;
+    ledger.forEach(b=>{
+        if(b.to===walletID) bal+=b.amount;
+        if(b.from===walletID) bal-=b.amount;
+    });
+    return bal;
 }
 
 /* =====================================
    WALLET SYSTEM
    ===================================== */
-let currentWallet = null;
-function createWallet() {
-    const privateKey = "PRIV-" + Math.random().toString(36).substring(2, 16);
-    const publicKey  = "WALLET-" + Math.random().toString(36).substring(2, 10);
+window.onload=function(){
+    const savedWallet = localStorage.getItem("wallet_data");
+    if(savedWallet){ showPinScreen(); }
+    else{ document.getElementById("welcome").style.display="block"; }
 
-    currentWallet = { privateKey, publicKey };
-
-    // Haddii uu cusub yahay → Si 100 DPT
-    if (!balances[publicKey]) {
-        balances[publicKey] = 100;
-        addBlock("GENESIS_POOL", publicKey, 100); // record in ledger
+    // Load genesis block if ledger empty
+    const savedLedger = localStorage.getItem("ledger_data");
+    if(savedLedger){ ledger = JSON.parse(savedLedger); }
+    else{
+        addBlock("GENESIS","GENESIS_POOL",FIXED_SUPPLY);
     }
+};
 
+function createWallet(){
+    const privateKey="PRIV-"+Math.random().toString(36).substring(2,16);
+    const publicKey="WALLET-"+Math.random().toString(36).substring(2,10);
+    let pin=prompt("Create PIN (4–6 digits):");
+    if(!pin||pin.length<4)return alert("Invalid PIN");
+    currentWallet={privateKey,publicKey,pin};
+    localStorage.setItem("wallet_data",JSON.stringify(currentWallet));
+    addBlock("GENESIS_POOL",publicKey,100);
+    balances[publicKey]=calculateBalance(publicKey);
     switchToDashboard();
 }
 
-function importWallet() {
-    const key = document.getElementById("importKey").value.trim();
-    if (!key.startsWith("PRIV-")) return alert("Invalid private key");
-
-    currentWallet = {
-        privateKey: key,
-        publicKey: "WALLET-" + key.slice(5, 12)
-    };
-
-    // Haddii uu wallet-ka cusub yahay → Si 100 DPT
-    if (!balances[currentWallet.publicKey]) {
-        balances[currentWallet.publicKey] = 100;
-        addBlock("GENESIS_POOL", currentWallet.publicKey, 100);
-    }
-
+function importWallet(){
+    const key=document.getElementById("importKey").value.trim();
+    if(!key.startsWith("PRIV-"))return alert("Invalid private key");
+    let pin=prompt("Set PIN for this wallet:");
+    if(!pin||pin.length<4)return alert("Invalid PIN");
+    const publicKey="WALLET-"+key.slice(5,12);
+    currentWallet={privateKey:key,publicKey,pin};
+    localStorage.setItem("wallet_data",JSON.stringify(currentWallet));
+    // Give 100 if new
+    const existingBalance=calculateBalance(publicKey);
+    if(existingBalance===0){ addBlock("GENESIS_POOL",publicKey,100); }
+    balances[publicKey]=calculateBalance(publicKey);
     switchToDashboard();
 }
-/* Show Dashboard */
-function switchToDashboard() {
-    document.getElementById("welcome").style.display = "none";
-    document.getElementById("dashboard").style.display = "block";
-    showWallet();
+
+function showPinScreen(){ document.getElementById("welcome").style.display="none"; document.getElementById("pinScreen").style.display="block"; }
+
+function unlockWallet(){
+    const data=JSON.parse(localStorage.getItem("wallet_data"));
+    const enteredPin=document.getElementById("pinInput").value;
+    if(enteredPin!==data.pin) return alert("Wrong PIN");
+    currentWallet=data;
+    const savedLedger=localStorage.getItem("ledger_data");
+    if(savedLedger){ ledger=JSON.parse(savedLedger); }
+    balances[currentWallet.publicKey]=calculateBalance(currentWallet.publicKey);
+    document.getElementById("pinScreen").style.display="none";
+    switchToDashboard();
 }
 
-/* Show Wallet Info */
-function showWallet() {
-    document.getElementById("walletInfo").innerHTML = `
-        <div class="block">
-            <b>Wallet ID:</b> ${currentWallet.publicKey}<br>
-            <b>Private Key:</b> ${currentWallet.privateKey}
-        </div>
-    `;
+function switchToDashboard(){ document.getElementById("welcome").style.display="none"; document.getElementById("dashboard").style.display="block"; showWallet(); }
+
+function showWallet(){
+    balances[currentWallet.publicKey]=calculateBalance(currentWallet.publicKey);
+    document.getElementById("walletInfo").innerHTML=`<div class="block"><b>Wallet ID:</b> ${currentWallet.publicKey}<br><b>Private Key:</b> ${currentWallet.privateKey}</div>`;
     updateBalanceUI();
 }
 
-/* =====================================
-   SENDING TOKENS
-   ===================================== */
-function sendTokens() {
-    if (!currentWallet) return alert("Create or import wallet");
+function updateBalanceUI(){
+    document.getElementById("balance").innerText=`Balance: ${balances[currentWallet.publicKey]} DPT`;
+}
 
-    const to = document.getElementById("receiver").value.trim();
-    const amount = Number(document.getElementById("amount").value);
+/* RESET WALLET */
+function resetWallet(){
+    if(!confirm("Are you sure you want to reset your wallet? All data will be lost!")) return;
+    localStorage.removeItem("wallet_data");
+    localStorage.removeItem("ledger_data");
+    currentWallet=null; ledger=[]; balances={};
+    document.getElementById("dashboard").style.display="none";
+    document.getElementById("welcome").style.display="block";
+}
 
-    if (!to.startsWith("WALLET-")) return alert("Invalid receiver");
-    if (amount <= 0) return alert("Invalid amount");
-
-    if (balances[currentWallet.publicKey] < amount)
-        return alert("Insufficient balance");
-
-    balances[currentWallet.publicKey] -= amount;
-    balances[to] = (balances[to] || 0) + amount;
-
-    addBlock(currentWallet.publicKey, to, amount);
+/* SEND TOKENS */
+function sendTokens(){
+    if(!currentWallet) return alert("Create or import wallet");
+    const to=document.getElementById("receiver").value.trim();
+    const amount=Number(document.getElementById("amount").value);
+    if(!to.startsWith("WALLET-"))return alert("Invalid receiver");
+    if(amount<=0)return alert("Invalid amount");
+    balances[currentWallet.publicKey]=calculateBalance(currentWallet.publicKey);
+    if(balances[currentWallet.publicKey]<amount) return alert("Insufficient balance");
+    addBlock(currentWallet.publicKey,to,amount);
+    balances[currentWallet.publicKey]=calculateBalance(currentWallet.publicKey);
     updateBalanceUI();
+    alert("Sent successfully!");
 }
 
-/* Update UI Balance */
-function updateBalanceUI() {
-    document.getElementById("balance").innerHTML =
-        "Balance: " + balances[currentWallet.publicKey] + " DPT";
-}
-
-/* =====================================
-   RENDER BLOCKCHAIN
-   ===================================== */
-function renderChain() {
-    const div = document.getElementById("chain");
-    div.innerHTML = "";
-
-    ledger.forEach(b => {
-        div.innerHTML += `
-            <div class="block">
-                <b>Block #${b.index}</b><br>
-                From: ${b.from}<br>
-                To: ${b.to}<br>
-                Amount: ${b.amount}<br>
-                PrevHash: ${b.prevHash}<br>
-                Hash: ${b.hash}
-            </div>
-        `;
+/* RENDER LEDGER */
+function renderChain(){
+    const div=document.getElementById("chain");
+    div.innerHTML="";
+    ledger.forEach(b=>{
+        div.innerHTML+=`<div class="block"><b>Block #${b.index}</b><br>From: ${b.from}<br>To: ${b.to}<br>Amount: ${b.amount}<br>PrevHash: ${b.prevHash}<br>Hash: ${b.hash}</div>`;
     });
 }
-
-/* Genesis supply */
-balances["GENESIS"] = FIXED_SUPPLY;
-addBlock("GENESIS", "GENESIS_POOL", FIXED_SUPPLY);
-
-/* Show welcome page by default */
-document.getElementById("welcome").style.display = "block";
 </script>
 
 </body>
